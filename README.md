@@ -1,7 +1,7 @@
 # machinery-go
 Go implementation of the machinery plugin contract: pluggable, static binary.
 
-Implements contract v0 of [practice-library/machinery](https://github.com/practice-library/machinery) at release v0.1.0 (commit `533522ec`): one JSON request on stdin, one envelope on stdout, verbs `describe`, `plan`, `run-unit` and `merge`. A plugin conforms when it passes machinery's black-box suite (`conformance/run.py`) at that commit. Nothing is implemented yet; see issue #1.
+Implements contract v0 of [practice-library/machinery](https://github.com/practice-library/machinery) at release v0.1.0 (commit `533522ec`): one JSON request on stdin, one envelope on stdout, and the verb `describe` plus either `plan`, `run-unit` and `merge` (a shardable job) or `run` (one that is not). Version 0 may still change; from version 1 on, changes are additive only. At that commit, machinery's black-box suite (`conformance/run.py`) holds cases for the fact-refresh job only. Nothing is implemented yet; see issue #1.
 
 ## Checks
 
