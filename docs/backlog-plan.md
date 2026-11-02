@@ -19,5 +19,5 @@ Open issues at `main` 03045fd: 2. Open pull requests: 0.
 
 ## What this plan does not decide
 
-- Whether Go is the right home for hot paths at all. That is the language study led by practice-machinery-92 (`docs/languages.md` in machinery). This repository sends it the Go runtime's view.
+- Whether Go is the right home for hot paths at all. That is the language study machinery leads (`docs/languages.md` in machinery). This repository sends it the Go runtime's view.
 - Whether this repository also serves contract v0 (stdin and stdout). The HLD proposes not to, as machinery-python does not; see `docs/hld.md` §3.
