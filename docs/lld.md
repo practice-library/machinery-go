@@ -22,7 +22,7 @@ runtime/
   deadline.go               min(caps.timeSeconds, Connect-Timeout-Ms)
   *_test.go                 unit tests, one per rule and per Python bug already found (§4)
 examples/minimal/main.go    the minimal plugin: fact-refresh's schemas, refreshes nothing, one outcome per call
-conformance/fixtures/       the runtime's fixtures (see §4 and open point 1)
+CONFORMANCE.json            the contract pin (tag, commit, asset, sha256); CI fetches conformance/runtime/ from that asset (§4)
 tests/guards.go             each guard row removes one check; its test must then fail
 .github/workflows/checks.yml
 README.md                   states contract v1alpha1 at machinery d6024652; v0 not served
@@ -48,8 +48,8 @@ type Refusal struct { Code connect.Code; Warnings []string } // returned as erro
 - **Numbers are the contract's doubles.** `input` arrives as plain Go values in which every JSON number is a finite `float64`, as `Struct` holds it: exact up to 2^53, and a literal beyond that rounds to the nearest double as proto's JSON does. The rule, the same one machinery-python's `codec.py` applies (`MAX_EXACT = 2 ** 53`), so both runtimes agree on every value the contract fixes:
   - *Decoding:* a number literal that does not round to a finite double (more than about 309 digits, or `1e400`) is `invalid_argument` with its Failure (machinery-python#7, #8). `NaN` and `Infinity` are refused by the strict pre-decode.
   - *To the plugin:* a value that is integral with `|v| <= 2^53` is handed over as `int64`, which always holds it exactly; every other value stays `float64`. So `int64` is a view of some doubles, never a wider type: a plugin never receives an integer the contract could not carry.
-  - *Encoding:* an integral double with `|v| <= 2^53` is written in integer form (`3`, never `3.0`). Every other finite double is written in a shortest round-trip form, so it reads back as the same double. A plugin's `int64` outside ±2^53 is converted to the nearest double first, as the wire must carry it.
-  - *Measured gap above 2^53 (2026-11-02):* Go's `strconv.FormatFloat(v, 'g', -1, 64)` and Python's `json.dumps` agree on `1e+20`, `1e+16`, `1e-05` and `1.2345678901234568e+17`, but not on 2^53 + 2: Go writes `9.007199254740994e+15`, Python `9007199254740994.0`. Same double, different bytes. The contract fixes only the integral case up to 2^53, so both are conforming today. Proposed to machinery: either a runtime fixture that fixes one form, which this runtime then matches by its own formatter, or a contract line that numbers above 2^53 compare as doubles, not as text. Until then, this runtime keeps Go's form and says so in its README.
+  - *Encoding:* every integral finite double is written in integer form, whatever its size, as `plugin.proto` and `contract/README.md` require ("written by every runtime as integers when they are"): digits only, no exponent, no `.0` (`strconv.FormatFloat(v, 'f', -1, 64)`; `-0` is written `0`). So 2^53 + 2 is `9007199254740994` and 1e20 is `100000000000000000000`. A non-integral double is written in shortest round-trip form. A plugin's `int64` outside ±2^53 is converted to the nearest double first, as the wire must carry it.
+  - *Measured gap in the other runtime (2026-11-02):* machinery-python's `codec.py` turns integral doubles into integers only up to 2^53 (`MAX_EXACT`), so above it Python writes `9007199254740994.0` and `1e+20`. That breaks the same rule. It is raised with machinery as a shared runtime fixture (the edges below) that both runtimes must pass, not settled here.
   - The edges are fixtures, not prose: 2^53, 2^53 + 1 written as a literal, the largest finite literal, the first one that overflows, and `-0` (written `0`). They belong in machinery's runtime fixtures, so every runtime meets the same values.
 - `ctx` carries the deadline. Unlike Python's thread (machinery-python#17), a Go plugin can be cancelled. The runtime still answers `deadline_exceeded` on time whether or not the plugin honours `ctx`.
 - Any error that is not a `Refusal`, or an `Answer` that breaks the envelope bounds (warnings 1 to 500 characters, notRead fields 1 to 300), is `internal` with a Failure detail, never a success.
@@ -85,7 +85,7 @@ type Refusal struct { Code connect.Code; Warnings []string } // returned as erro
   - status checked before decoding the Failure (python#13 to #16);
   - the end-to-end and deadline tests machinery-python#17 still lacks: a plugin that ignores `ctx` gets `deadline_exceeded` on time.
 - **Guards:** `tests/guards.go` removes each check in turn; its test must fail. Same pattern as both other repositories.
-- **Conformance:** CI serves `examples/minimal` and runs machinery's `conformance/connect_run.py` at the pinned commit, with `--validator jsonschema` (sourcemeta jsonschema 17.2.1, pinned by sha256), against `conformance/fixtures/`.
+- **Conformance:** CI serves `examples/minimal` and runs machinery's `conformance/connect_run.py` at the pinned commit, with `--validator jsonschema` (sourcemeta jsonschema 17.2.1, pinned by sha256), against `conformance/runtime/` from the pinned contract release asset (path 1 below). Nothing else is selected: the job fixtures in `conformance/connect/` test fact-refresh, not a runtime.
 
 **What "passing machinery's conformance fixtures" can mean today.** `conformance/connect/` tests the fact-refresh *job*: quotes found on pages, robots.txt, merges. A runtime's minimal example cannot pass those without being a fact-refresh plugin. machinery-python therefore keeps its own `conformance/fixtures/` (56 cases) for what the runtime decides, and runs machinery's runner on them. Two paths:
 
@@ -113,13 +113,16 @@ Every public write is the practice-library bot's, through the organisation's app
 1. **The first runtime PR** (#1 rewritten) lands the runtime, the example, the fixtures pin, CI, and corrects the README (it says "Implements contract v0" today). It is built against machinery's first contract tag with the stdio binding, and names it.
 2. **The release PR**, authored by the bot, sets `RELEASE.json` to the release's pins: the runtime version; the contract pin in machinery's four values (tag, commit, asset, asset sha256); the `gen/go` tag that contract release names and its `go.sum` lines. CI checks each pin as machinery `docs/lld.md` §6.6 does, then runs conformance on both arches over both bindings. It merges after one review pass at its exact head.
 3. **The tag.** The bot pushes `vA.B.C` at the merge commit. The tag must match `RELEASE.json` at that commit; the release workflow refuses otherwise.
-4. **The release workflow** (`.github/workflows/release.yml`, on tag push, public Actions, $0) runs at the tagged commit:
-   - conformance (`conformance/connect/`'s runtime cases and `conformance/runtime/`, over 127.0.0.1 and stdio) and unit tests on ubuntu-24.04 and ubuntu-24.04-arm, against the pinned contract asset;
-   - the two builds per arch, compared byte for byte;
-   - only if every step passed: it creates the GitHub release, attaching `minimal-linux-amd64`, `minimal-linux-arm64`, `SHA256SUMS` and `RELEASE.json`.
+4. **Verify and build, read-only** (`.github/workflows/release.yml`, on the tag push, public Actions, $0). Every job has `permissions: contents: read` and publishes nothing:
+   - `verify`: conformance (`conformance/runtime/` of the pinned contract asset, over 127.0.0.1 and stdio) and unit tests on ubuntu-24.04 and ubuntu-24.04-arm;
+   - `build` (needs `verify`): the two builds per arch, compared byte for byte, uploaded as workflow artifacts with `SHA256SUMS` and `RELEASE.json`.
+5. **Publish, by the bot only** (machinery `docs/lld.md` §6.1: no workflow token publishes anything), on the maintainer's machine through the organisation's app wrapper, and only after both jobs passed:
+   - check that the release workflow's run for the tag concluded `success` at exactly the tagged commit;
+   - download its artifacts, check each against `SHA256SUMS`;
+   - `gh release create vA.B.C --verify-tag`, then upload `minimal-linux-amd64`, `minimal-linux-arm64`, `SHA256SUMS` and `RELEASE.json`.
 
-   Its token is the workflow's own `GITHUB_TOKEN` with `contents: write` for this job only, and `contents: read` everywhere else. No secret is stored. A failed run publishes nothing; the fix is a new patch version, never a moved tag.
-5. **A consumer** pins the module by `go.sum`, or a binary by its sha256 in a registry row it owns. Contract test data is adopted from machinery's contract release asset, not from here (HLD §5; machinery `docs/lld.md` §6.6).
+   A failed run publishes nothing; the fix is a new patch version, never a moved tag. No secret is stored in the repository.
+6. **A consumer** pins the module by `go.sum`, or a binary by its sha256 in a registry row it owns. Contract test data is adopted from machinery's contract release asset, not from here (HLD §5; machinery `docs/lld.md` §6.6).
 
 No package registry account is needed. The Go module proxy fetches the public tag on first request.
 
