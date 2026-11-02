@@ -3,7 +3,8 @@
 Status: **signed by the founder on 2026-11-02** ("approved all start going through your recommendations"), with the rulings recorded in `docs/hld.md` §7. Building waits for machinery's stdio binding and its contract tag (convergence plan, phase 3).
 
 Pins used below, all read on 2026-11-02:
-- machinery `gen/go/v0.1.0` = commit `d60246522d7390c850d2e821d7bfb08a959ff2c2`. machinery-python pins the same commit.
+- machinery `gen/go/v0.1.0` = commit `d60246522d7390c850d2e821d7bfb08a959ff2c2`. machinery-python pins the same commit. The Go module stays on it.
+- machinery `contract/v1alpha1.0` (planned; not yet published on 2026-11-03, so these values are machinery's stated ones, to be checked against the release when it exists) = commit `65b3d2ce34c67c7887a2564b3f694239aebb642d`, asset `machinery-contract-v1alpha1.0.tar`, sha256 `f9c513a94e735ec850f1ba09d8a13f919342b34c2e4aad1c8eaa4a774cffad4f`. Its `proto/` and `gen/` are byte-identical to `gen/go/v0.1.0`.
 - `gen/go/go.mod`: `go 1.26.0`, `connectrpc.com/connect/v2 v2.0.2`, `google.golang.org/protobuf v1.36.12`.
 - machinery `main` at `65b3d2c`: `conformance/connect/` holds 66 cases (describe 17, plan 6, run-unit-safety 15, run-unit-design-review 12, merge 16).
 
@@ -66,7 +67,7 @@ type Refusal struct { Code connect.Code; Warnings []string } // returned as erro
 | over the deadline | `deadline_exceeded` | 504 | yes |
 | plugin bug | `internal` | 500 | yes |
 
-**Front ends.** `127.0.0.1` TCP is the default, never `0.0.0.0` or `::`; a test asserts the bound address. The second front end is `-stdio` (D1, ruled; machinery `docs/hld.md` §6.1): one body in, one body out, on the same core. No unix socket. The core (`codec.go`, `rules.go`, `failure.go`, `deadline.go`) takes bytes and returns bytes plus a code, so either front end is a thin wrapper.
+**Front ends.** `127.0.0.1` TCP is the reference binding, never `0.0.0.0` or `::`; a test asserts the bound address. The second is `-stdio` (D1, signed), framed exactly as machinery `docs/lld.md` §2.4 defines it: one process per call; stdin is one JSON line `{"path": ..., "timeoutMs": N}` then the Connect-JSON request body; stdout is one line `{"status": <code or "ok">}` then the response or Connect error body; exit 0 on ok and 1 on any error, the Connect code being the authority; the host kills at `timeoutMs` plus a grace period. Both front ends call the same core (`codec.go`, `rules.go`, `failure.go`, `deadline.go`), which takes bytes and returns bytes plus a code. `Describe` declares both bindings in the additive field machinery adds for it. No unix socket.
 
 ## 3. Where the generated code is used and where it is not
 
@@ -88,16 +89,7 @@ type Refusal struct { Code connect.Code; Warnings []string } // returned as erro
 
 **What "passing machinery's conformance fixtures" can mean today.** `conformance/connect/` tests the fact-refresh *job*: quotes found on pages, robots.txt, merges. A runtime's minimal example cannot pass those without being a fact-refresh plugin. machinery-python therefore keeps its own `conformance/fixtures/` (56 cases) for what the runtime decides, and runs machinery's runner on them. Two paths:
 
-1. **Proposed:** the runtime fixtures move to machinery (for example `conformance/runtime/`), so Python and Go run one set instead of two copies that drift. machinery-go pins them. Until then, machinery-go uses machinery-python's set at commit `233800cf314027681aeb7d41bd61f1ffd67185b2`, pinned per file:
-
-   | File | sha256 |
-   |---|---|
-   | `conformance/fixtures/describe.json` | `23318676afe94af739a25d66b0e196ea1df3ff5ea9401d43c7b6750018b12cc6` |
-   | `conformance/fixtures/plan.json` | `837a87a68d5e20c3143e4edac4d7672bd32a88c406c644e5cdf95f4ef7920b43` |
-   | `conformance/fixtures/run-unit.json` | `5d373bcc80ef1ffa4b9a3c6a8d50ee8010da46ec34d9b9f2a2f1242db8783640` |
-   | `conformance/fixtures/merge.json` | `64922272450f5ec22f311855f6b0fbd6831210261a1cf890d9594693d4a44aa0` |
-
-   CI fetches them at that commit and checks each sha256 before running. When machinery's contract tag carries `conformance/runtime/`, the pin moves to it in its own PR.
+1. **The runtime fixtures are machinery's** (`conformance/runtime/`, moved from machinery-python's 56, arriving in `contract/v1alpha1.1`). machinery-go pins them by contract tag plus the release asset's sha256, never by a bare commit, and checks them as machinery `docs/lld.md` §6.6 does: download the asset and `SHA256SUMS`, compare the sha256 with the pin, check that the tag names the pinned commit, unpack only `conformance/`. No interim copy of machinery-python's fixtures is taken; building waits for that tag.
 2. The job fixtures (`conformance/connect/`) are passed by a Go plugin later: the quote matcher would carry `run-unit-design-review.json`.
 
 The move is machinery's to make (its D8 and its runtime-fixtures item).
@@ -119,15 +111,15 @@ The move is machinery's to make (its D8 and its runtime-fixtures item).
 Every public write is the practice-library bot's, through the organisation's app wrapper. No person's account tags, pushes or uploads.
 
 1. **The first runtime PR** (#1 rewritten) lands the runtime, the example, the fixtures pin, CI, and corrects the README (it says "Implements contract v0" today). It is built against machinery's first contract tag with the stdio binding, and names it.
-2. **The release PR**, authored by the bot, sets `RELEASE.json` to the release's pins: the runtime version, the contract tag and its commit, the `gen/go` tag and its `go.sum` lines, the runtime fixtures' commit and sha256 per file. CI checks that each pin resolves and each sha256 matches, then runs conformance on both arches. It merges after one review pass at its exact head.
+2. **The release PR**, authored by the bot, sets `RELEASE.json` to the release's pins: the runtime version; the contract pin in machinery's four values (tag, commit, asset, asset sha256); the `gen/go` tag that contract release names and its `go.sum` lines. CI checks each pin as machinery `docs/lld.md` §6.6 does, then runs conformance on both arches over both bindings. It merges after one review pass at its exact head.
 3. **The tag.** The bot pushes `vA.B.C` at the merge commit. The tag must match `RELEASE.json` at that commit; the release workflow refuses otherwise.
 4. **The release workflow** (`.github/workflows/release.yml`, on tag push, public Actions, $0) runs at the tagged commit:
-   - conformance and unit tests on ubuntu-24.04 and ubuntu-24.04-arm, against the pins in `RELEASE.json`;
+   - conformance (`conformance/connect/`'s runtime cases and `conformance/runtime/`, over 127.0.0.1 and stdio) and unit tests on ubuntu-24.04 and ubuntu-24.04-arm, against the pinned contract asset;
    - the two builds per arch, compared byte for byte;
    - only if every step passed: it creates the GitHub release, attaching `minimal-linux-amd64`, `minimal-linux-arm64`, `SHA256SUMS` and `RELEASE.json`.
 
    Its token is the workflow's own `GITHUB_TOKEN` with `contents: write` for this job only, and `contents: read` everywhere else. No secret is stored. A failed run publishes nothing; the fix is a new patch version, never a moved tag.
-5. **A consumer** pins the module by `go.sum`, or a binary by its sha256 in a registry row it owns. Contract test data is adopted from machinery's contract tag, not from here (HLD §5).
+5. **A consumer** pins the module by `go.sum`, or a binary by its sha256 in a registry row it owns. Contract test data is adopted from machinery's contract release asset, not from here (HLD §5; machinery `docs/lld.md` §6.6).
 
 No package registry account is needed. The Go module proxy fetches the public tag on first request.
 
@@ -140,10 +132,10 @@ One PR in flight at a time. The first PR is near the size guard's ~600 non-fixtu
 The same example as HLD §8: the vendor graph `vendors/<example>` (graphs#68 and #91). What each step would exercise in this repository's code, if it were built:
 
 1. **graphs holds the facts.** No code here reads graphs. `go.mod` gains no graphs dependency, and a test (`go list -deps`) keeps it that way.
-2. **fact-refresh re-reads the pinned tag.** Still Python. The only thing this repository takes from that step is machinery's runtime fixtures at a pinned commit and sha256 (§4 path 1).
+2. **fact-refresh re-reads the pinned tag.** Still Python. The only thing this repository takes from that step is machinery's runtime fixtures, pinned by contract tag and asset sha256 (§4 path 1).
 3. **Served as a plugin.** A conformance run of `examples/minimal` over each binding:
    - the 127.0.0.1 reference: `connect_run.py --url http://127.0.0.1:<port>`, as today;
-   - stdio (D1): a stdio runner, which machinery owns and ships with the contract tag that adds the binding; the same fixtures and expectations, except that the deadline is the caller's kill, as in contract v0.
+   - stdio (D1): machinery's stdio runner, shipped in the contract release that adds the binding; the same fixtures and expectations, with the frame of §2 and the deadline enforced by the host's kill at `timeoutMs`.
    The design-review cases (12, from graphs quotes) become the quote matcher's fixtures when that plugin exists; they are not this runtime's.
 4. **Guard input for the consumer.** The consumer's bridge tests its client against a recorded exchange. The proposed artefact from here: a `testdata/` directory of request and response bodies the Go runtime actually produced for each fixture, published with each release and pinned by sha256, so the consumer pins bytes from a real runtime instead of hand-written ones.
 5. **Decisions and sign-offs.** Not code. The first PR body names the founder's signatures on this HLD and LLD and the transport ruling it was built on.
