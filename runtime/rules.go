@@ -7,10 +7,10 @@ package runtime
 import (
 	"fmt"
 	"maps"
+	"math"
 	neturl "net/url"
 	"regexp"
 	"slices"
-	"strconv"
 
 	pb "github.com/practice-library/machinery/gen/go/machinery/plugin/v1alpha1"
 	"google.golang.org/protobuf/proto"
@@ -145,12 +145,15 @@ func redact(raw string) string {
 
 var hostname = regexp.MustCompile(`\A[a-z0-9.-]{1,253}\z`)
 
-// kind names a JSON value's type, or the integer it is, never a string's or a container's contents.
+// kind names a JSON value's type and never its value: an integer the rule refuses is only out of range.
 func kind(v any) string {
 	switch x := v.(type) {
 	case int64:
-		return strconv.FormatInt(x, 10)
+		return "an integer out of range"
 	case float64:
+		if x == math.Trunc(x) { // integral beyond 2^53, held as a double
+			return "an integer out of range"
+		}
 		return "a number with a fraction"
 	case string:
 		return "a string"

@@ -179,3 +179,30 @@ func TestErrorBodyIsTheWireBody(t *testing.T) {
 		t.Errorf("message %q, detail %v", b["message"], f)
 	}
 }
+
+// The same fit with warnings that grow when written: JSON escapes (quote, backslash, control characters)
+// and multibyte characters. At each limit the body sent is at most the limit, keeps its code and detail,
+// and its warnings and message stay valid UTF-8, never cut inside a character or an escape.
+func TestFailureFitsEscapedAndMultibyteWarnings(t *testing.T) {
+	for _, unit := range []string{`"\`, "\x01\x1f", "é", "😀", "a\"é\\😀\x02"} {
+		w := strings.Repeat(unit, warningMax/utf8.RuneCountInString(unit))
+		for limit := 1024; limit <= 1200; limit++ {
+			e := failure(connect.CodeFailedPrecondition, []string{w, w}, []NotRead{{What: "x", Why: string([]rune(w)[:1])}}, limit)
+			raw := errorBody(e)
+			if len(raw) > limit {
+				t.Fatalf("%q, limit %d: body of %d bytes", unit, limit, len(raw))
+			}
+			b, f := body(t, e)
+			if e.Code() != connect.CodeFailedPrecondition || b["code"] != "failed_precondition" {
+				t.Fatalf("%q, limit %d: code %v / %v", unit, limit, e.Code(), b["code"])
+			}
+			if f == nil || len(f.GetWarnings()) == 0 || f.GetWarnings()[0] == "" || !strings.HasPrefix(w, f.GetWarnings()[0]) {
+				t.Fatalf("%q, limit %d: detail %v", unit, limit, f)
+			}
+			msg, _ := b["message"].(string)
+			if !utf8.ValidString(msg) || !utf8.ValidString(f.GetWarnings()[0]) || msg != strings.Join(f.GetWarnings(), "; ") {
+				t.Fatalf("%q, limit %d: message %q", unit, limit, msg)
+			}
+		}
+	}
+}

@@ -125,11 +125,12 @@ func TestDiagnosticsCopyNoValues(t *testing.T) {
 		`{"status": ["` + secret + `"]}`:              "an array",
 		`{"status": true}`:                            "a boolean",
 		`{"status": 200.5}`:                           "a number with a fraction",
-		`{"status": 99}`:                              "99",
+		`{"status": 99}`:                              "an integer out of range",
+		`{"status": 1e20}`:                            "an integer out of range",
 	} {
 		body := `{"replay": {"start": "2026-10-31T12:00:00Z", "exchanges": {"` + url + `": [` + rec + `]}}}`
 		why := networkOf(t, body)
-		if !strings.Contains(why, "status must be") || !strings.Contains(why, kindSaid) {
+		if !strings.Contains(why, "status must be") || !strings.HasSuffix(why, ", not "+kindSaid) {
 			t.Errorf("%s: %q does not name the rule and %q", rec, why, kindSaid)
 		}
 		if strings.Contains(why, secret) || strings.ContainsAny(why, "\a\x1b") {
