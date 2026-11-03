@@ -157,3 +157,25 @@ func TestFailureNotUTF8(t *testing.T) {
 		t.Errorf("detail %v", f)
 	}
 }
+
+// No warnings and a limit nothing fits: the code alone, never a panic.
+func TestFailureWithoutWarnings(t *testing.T) {
+	e := failure(connect.CodeInternal, nil, []NotRead{{What: strings.Repeat("x", 300), Why: "y"}}, 10)
+	if e.Code() != connect.CodeInternal {
+		t.Errorf("code %v", e.Code())
+	}
+}
+
+// The bytes errorBody gives are what a Connect client reads: JSON with the code, the message and the
+// detail, nothing escaped that the text does not need (no HTML escaping, no debug copy).
+func TestErrorBodyIsTheWireBody(t *testing.T) {
+	e := failure(connect.CodeUnavailable, []string{"a <b> & c \u2028 é"}, nil, 1<<20)
+	raw := errorBody(e)
+	if strings.Contains(string(raw), `\u003c`) || strings.Contains(string(raw), `"debug"`) {
+		t.Errorf("body %s", raw)
+	}
+	b, f := body(t, e)
+	if b["message"] != "a <b> & c \u2028 é" || f == nil {
+		t.Errorf("message %q, detail %v", b["message"], f)
+	}
+}

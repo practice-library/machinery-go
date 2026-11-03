@@ -11,7 +11,9 @@ package runtime
 //
 // Encoding writes every envelope field (data is null when the call gives none), and every number with an
 // integral value as an integer: 3, never 3.0, and 1e20 as 100000000000000000000 (plugin.proto's header).
-// Above 2^53 this differs from machinery-python, which writes 9007199254740994.0 for 2^53 + 2.
+// Non-integral numbers are written as Python's repr writes them, so both runtimes write the same bytes for
+// every number (machinery-python's matching change for integral values above 2^53 is on its branch
+// integral-form-any-size; its main still writes 9007199254740994.0 for 2^53 + 2).
 
 import (
 	"bytes"
@@ -236,6 +238,7 @@ func appendJSON(b []byte, v any) []byte {
 		}
 		// Non-integral: shortest round-trip digits, positional while 1e-4 <= |x| < 1e16 and with an exponent
 		// outside, as Python's repr writes them, so both runtimes write the same bytes (1234567.5, 1e-05).
+		// (every double from 2^53 up is integral, so the upper bound is never reached here; it states repr's rule)
 		if a := math.Abs(x); a >= 1e-4 && a < 1e16 {
 			return strconv.AppendFloat(b, x, 'f', -1, 64)
 		}

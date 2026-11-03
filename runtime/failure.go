@@ -63,6 +63,9 @@ func failure(code connect.Code, warnings []string, notRead []NotRead, limit int)
 	if limit > 0 && len(errorBody(e)) > limit {
 		e = parts(code, warnings, nil)
 	}
+	if limit > 0 && len(errorBody(e)) > limit && len(warnings) == 0 {
+		return connect.NewError(code, "")
+	}
 	if limit > 0 && len(errorBody(e)) > limit {
 		first := []rune(warnings[0])
 		lo, hi := 0, len(first) // the longest prefix of the first warning alone that fits, by bisection
@@ -83,7 +86,9 @@ func failure(code connect.Code, warnings []string, notRead []NotRead, limit int)
 }
 
 // errorBody is the Connect JSON error body of e: code, message and each detail's type and unpadded
-// base64 value, with no debug copy, so its size is what is sent.
+// base64 value. The runtime writes these bytes itself on both bindings and never through connect-go's
+// error writer, which would add a debug copy of each detail and HTML-escape the text (connect/v2 v2.0.2
+// connecthttp/protocol_connect.go), so this size is what is sent.
 func errorBody(e *connect.Error) []byte {
 	b := append(appendString([]byte(`{"code":`), e.Code().String()), `,"message":`...)
 	b = appendString(b, e.Message())
