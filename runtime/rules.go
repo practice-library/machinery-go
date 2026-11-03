@@ -7,8 +7,10 @@ package runtime
 import (
 	"fmt"
 	"maps"
+	neturl "net/url"
 	"regexp"
 	"slices"
+	"strconv"
 
 	pb "github.com/practice-library/machinery/gen/go/machinery/plugin/v1alpha1"
 	"google.golang.org/protobuf/proto"
@@ -74,10 +76,10 @@ func network(net *pb.Network) string {
 		return fmt.Sprintf("network.replay.start: %q is not a UTC time as 2026-10-31T12:00:00Z", cut(replay.GetStart(), 40))
 	}
 	exchanges := replay.GetExchanges()
-	for _, url := range slices.Sorted(maps.Keys(exchanges)) {
+	for n, url := range slices.Sorted(maps.Keys(exchanges)) {
 		for i, rec := range fromList(exchanges[url]) {
 			if why := recorded(rec); why != "" {
-				return fmt.Sprintf("network.replay.exchanges[%q][%d]: %s", cut(url, 80), i, why)
+				return fmt.Sprintf("network.replay.exchanges: url %d of %d (%s), response %d: %s", n+1, len(exchanges), redact(url), i, why)
 			}
 		}
 	}
@@ -109,7 +111,7 @@ func recorded(v any) string {
 	}
 	// fromValue makes an integral number an int64, so a fraction, a bool or a string is not one
 	if n, ok := status.(int64); !ok || n < statusRange[0] || n > statusRange[1] {
-		return fmt.Sprintf("status must be an integer from %d to %d, not %.40v", statusRange[0], statusRange[1], status)
+		return fmt.Sprintf("status must be an integer from %d to %d, not %s", statusRange[0], statusRange[1], kind(status))
 	}
 	if headers, ok := rec["headers"]; ok {
 		h, ok := headers.(map[string]any)
@@ -131,6 +133,37 @@ func recorded(v any) string {
 }
 
 // cut is s's first n characters.
+// redact names a URL by its scheme and host only: never its userinfo, path, query or fragment, which can
+// hold credentials or tokens.
+func redact(raw string) string {
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Hostname() == "" || !hostname.MatchString(u.Hostname()) {
+		return "not a URL with a host"
+	}
+	return u.Scheme + "://" + u.Hostname()
+}
+
+var hostname = regexp.MustCompile(`\A[a-z0-9.-]{1,253}\z`)
+
+// kind names a JSON value's type, or the integer it is, never a string's or a container's contents.
+func kind(v any) string {
+	switch x := v.(type) {
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case float64:
+		return "a number with a fraction"
+	case string:
+		return "a string"
+	case bool:
+		return "a boolean"
+	case []any:
+		return "an array"
+	case map[string]any:
+		return "an object"
+	}
+	return "null"
+}
+
 func cut(s string, n int) string {
 	if r := []rune(s); len(r) > n {
 		return string(r[:n])

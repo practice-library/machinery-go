@@ -113,3 +113,36 @@ func TestARecordedResponse(t *testing.T) {
 		}
 	}
 }
+
+// A diagnostic names the rule and the kind of value, never the value: a recorded status can be any JSON,
+// and a replay URL can hold credentials or tokens in its userinfo, path or query.
+func TestDiagnosticsCopyNoValues(t *testing.T) {
+	const secret = "s3cr3t"
+	url := "https://user:" + secret + "@a.com/p/" + secret + "?token=" + secret + "#" + secret
+	for rec, kindSaid := range map[string]string{
+		`{"status": "` + secret + `\u0007\u001b[2J"}`: "a string",
+		`{"status": {"x": "` + secret + `"}}`:         "an object",
+		`{"status": ["` + secret + `"]}`:              "an array",
+		`{"status": true}`:                            "a boolean",
+		`{"status": 200.5}`:                           "a number with a fraction",
+		`{"status": 99}`:                              "99",
+	} {
+		body := `{"replay": {"start": "2026-10-31T12:00:00Z", "exchanges": {"` + url + `": [` + rec + `]}}}`
+		why := networkOf(t, body)
+		if !strings.Contains(why, "status must be") || !strings.Contains(why, kindSaid) {
+			t.Errorf("%s: %q does not name the rule and %q", rec, why, kindSaid)
+		}
+		if strings.Contains(why, secret) || strings.ContainsAny(why, "\a\x1b") {
+			t.Errorf("%s: %q copies a value", rec, why)
+		}
+		if !strings.Contains(why, "url 1 of 1 (https://a.com)") {
+			t.Errorf("%s: %q does not name the URL by scheme and host", rec, why)
+		}
+	}
+	for raw, want := range map[string]string{"https://a.com/x?y=1": "https://a.com", "not a url": "not a URL with a host",
+		"https://A.COM/": "not a URL with a host", "https://a.com‮/": "not a URL with a host", "mailto:x@a.com": "not a URL with a host"} {
+		if got := redact(raw); got != want {
+			t.Errorf("redact(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}

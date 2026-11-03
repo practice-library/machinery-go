@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"math"
 	"math/big"
 	"reflect"
@@ -125,6 +126,24 @@ func TestTheStrictPreDecodeAnswersBeforeProtojson(t *testing.T) {
 		`{"caps": {"timeSeconds": 1, "outputBytes": 1024}, "x": "\ud800"}`: "lone surrogate", `{"caps": {"timeSeconds": 1e400}}`: "finite double"} {
 		if err := decode([]byte(body), new(pb.DescribeRequest)); err == nil || !strings.Contains(err.Error(), says) {
 			t.Errorf("%s: %v", body, err)
+		}
+	}
+}
+
+// A json.Number comes from a plugin's answer, not from the decoder, and ParseFloat reads more than JSON:
+// NaN, Inf, Infinity, hex floats and underscores. None of them, at any depth, may reach the wire.
+func TestPlainRefusesNumbersJSONCannotCarry(t *testing.T) {
+	for _, n := range []string{"NaN", "nan", "Inf", "-Inf", "Infinity", "+Infinity", "0x1p3", "1_000", "+1", "01", "1.", ".5", "1e", "", "1e400", "-1e400"} {
+		for _, v := range []any{json.Number(n), []any{1.0, json.Number(n)}, map[string]any{"a": map[string]any{"b": []any{json.Number(n)}}}} {
+			if _, err := plain(v); err == nil {
+				t.Errorf("%#v: accepted", v)
+			}
+		}
+	}
+	for n, want := range map[string]float64{"0": 0, "-0": 0, "3": 3, "1.5": 1.5, "-2e3": -2000, "1E-2": 0.01, "1.7976931348623157e308": math.MaxFloat64} {
+		got, err := plain(json.Number(n))
+		if err != nil || got != want {
+			t.Errorf("%s: %v, %v; want %v", n, got, err, want)
 		}
 	}
 }

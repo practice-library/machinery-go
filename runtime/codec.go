@@ -21,6 +21,7 @@ import (
 	"io"
 	"maps"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"unicode/utf8"
@@ -158,6 +159,9 @@ func fromList(l *structpb.ListValue) []any {
 	return out
 }
 
+// jsonNumber is RFC 8259's number grammar, nothing more.
+var jsonNumber = regexp.MustCompile(`\A-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\z`)
+
 func number(f float64) any {
 	if f == math.Trunc(f) && math.Abs(f) <= maxExact {
 		return int64(f)
@@ -175,10 +179,13 @@ func plain(v any) (any, error) {
 			return nil, errors.New("a number is not finite")
 		}
 		return x, nil
-	case json.Number:
-		f, err := strconv.ParseFloat(string(x), 64)
+	case json.Number: // from a plugin, not from the decoder: ParseFloat also reads NaN, Inf and hex
+		if !jsonNumber.MatchString(string(x)) {
+			return nil, errors.New("a json.Number is not a JSON number")
+		}
+		f, err := strconv.ParseFloat(string(x), 64) // an overflow is ErrRange, so a finite f is all that passes
 		if err != nil {
-			return nil, err
+			return nil, errors.New("a number is not finite")
 		}
 		return f, nil
 	case []any:

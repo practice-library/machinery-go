@@ -1,6 +1,10 @@
 // Package runtime serves a plugin as machinery.plugin.v1alpha1.PluginService, contract v1alpha1 of
 // practice-library/machinery: Connect unary JSON on 127.0.0.1, or one call over stdin and stdout.
 //
+// This part holds the plugin types, the strict codec, the request rules and the Failure error. The two
+// front ends, the deadline and the output cap that the rest of this comment describes come with the
+// serving half (docs/lld.md §7).
+//
 // A plugin is any value with some of the methods below; the runtime answers unimplemented for the rest.
 // Per call, the runtime and not the plugin decodes strictly and checks the rules proto cannot state
 // (invalid_argument), gives up at the deadline (deadline_exceeded, whether or not the plugin honours ctx),
