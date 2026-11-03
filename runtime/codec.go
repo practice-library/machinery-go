@@ -227,7 +227,12 @@ func appendJSON(b []byte, v any) []byte {
 		if x == math.Trunc(x) { // every integral double as integer digits: 1e20 is 100000000000000000000
 			return strconv.AppendFloat(b, x, 'f', -1, 64)
 		}
-		return strconv.AppendFloat(b, x, 'g', -1, 64)
+		// Non-integral: shortest round-trip digits, positional while 1e-4 <= |x| < 1e16 and with an exponent
+		// outside, as Python's repr writes them, so both runtimes write the same bytes (1234567.5, 1e-05).
+		if a := math.Abs(x); a >= 1e-4 && a < 1e16 {
+			return strconv.AppendFloat(b, x, 'f', -1, 64)
+		}
+		return strconv.AppendFloat(b, x, 'e', -1, 64)
 	case []any:
 		b = append(b, '[')
 		for i, item := range x {
