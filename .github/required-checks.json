@@ -1,5 +1,6 @@
 {
   "jobs": [
+    "unit",
     "leak-scan",
     "denylist",
     "removed-paths",
