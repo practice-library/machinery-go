@@ -40,8 +40,11 @@ jobs:
         run: GOFLAGS=-mod=readonly go vet ./...
       - name: go test -race
         run: GOFLAGS=-mod=readonly go test -race -count=1 ./...
-      - name: govulncheck v1.9.0 over the module
-        run: GOFLAGS=-mod=readonly go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: govulncheck, pinned by tools/go.sum, over the module
+        working-directory: tools
+        run: |
+          GOFLAGS=-mod=readonly go mod verify
+          GOFLAGS=-mod=readonly go run golang.org/x/vuln/cmd/govulncheck -C .. ./...
       - name: Each guard, removed, makes the tests fail
         run: GOFLAGS=-mod=readonly go run ./tests/guards
   build:
