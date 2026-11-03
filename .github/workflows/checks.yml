@@ -1,7 +1,9 @@
 name: checks
 # Calls practice-library/.github's reusable workflows at one pinned commit. The gate's needs must
 # equal the jobs in .github/required-checks.json.
-# discover and schema-check join when this repository has a check.json to validate.
+# discover and schema-check join when this repository has a check.json to validate. unit runs on both CI
+# arches; build and the guards join with the front ends, conformance when machinery's contract tag carries
+# conformance/runtime/.
 on:
   pull_request:
     branches: [main]
@@ -15,6 +17,27 @@ concurrency:
   group: checks-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Modules are the ones go.sum pins
+        run: GOFLAGS=-mod=readonly go mod verify
+      - name: go vet
+        run: GOFLAGS=-mod=readonly go vet ./...
+      - name: go test -race
+        run: GOFLAGS=-mod=readonly go test -race -count=1 ./...
   leak-scan:
     uses: practice-library/.github/.github/workflows/leak-scan.yml@1dd90884cca4277db278eb7d4ea17eaebf21e563 # v2.1.0
   denylist:
@@ -47,7 +70,7 @@ jobs:
       guard: schema-loosening
   gate:
     if: always()
-    needs: [leak-scan, denylist, removed-paths, release-note, schema-loosening]
+    needs: [unit, leak-scan, denylist, removed-paths, release-note, schema-loosening]
     uses: practice-library/.github/.github/workflows/gate.yml@1dd90884cca4277db278eb7d4ea17eaebf21e563 # v2.1.0
     with:
       needs: ${{ toJSON(needs) }}

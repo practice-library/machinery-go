@@ -1,7 +1,7 @@
 # machinery-go
 Go implementation of the machinery plugin contract: pluggable, static binary.
 
-Implements contract v0 of [practice-library/machinery](https://github.com/practice-library/machinery) at release v0.1.0 (commit `533522ec`): one JSON request on stdin, one envelope on stdout, and the verb `describe` plus either `plan`, `run-unit` and `merge` (a shardable job) or `run` (one that is not). Version 0 may still change; from version 1 on, changes are additive only. At that commit, machinery's black-box suite (`conformance/run.py`) holds cases for the fact-refresh job only. Nothing is implemented yet; see issue #1.
+Built for contract v1alpha1 of [practice-library/machinery](https://github.com/practice-library/machinery), release `contract/v1alpha1.0` (commit `65b3d2ce`, asset `machinery-contract-v1alpha1.0.tar`, sha256 `f9c513a94e735ec850f1ba09d8a13f919342b34c2e4aad1c8eaa4a774cffad4f`), with the generated module at `gen/go/v0.1.0`, pinned by `go.sum`. Contract v0 is not served. The runtime lands in two parts: `runtime/` holds the strict codec, the request rules and the Failure error; the 127.0.0.1 and stdio front ends, the deadline and an example follow. The design is in `docs/hld.md` and `docs/lld.md`.
 
 ## Checks
 
