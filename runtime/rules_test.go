@@ -147,3 +147,35 @@ func TestDiagnosticsCopyNoValues(t *testing.T) {
 		}
 	}
 }
+
+// A value the caller chose is shown only when it is plain [A-Za-z0-9_.:+-] text of at most n characters,
+// in double quotes; anything else, including control characters, quotes, spaces, other scripts and long
+// values, is named only as "a value with other characters".
+func TestShownCopiesOnlyPlainValues(t *testing.T) {
+	for in, want := range map[string]string{"a.com": `"a.com"`, "time_seconds": `"time_seconds"`, "1e400": `"1e400"`, "2026-10-31T12:00": `"2026-10-31T12:00"`,
+		"": "a value with other characters", "a b": "a value with other characters", "a\x1b[2J": "a value with other characters",
+		`a"b`: "a value with other characters", "é": "a value with other characters", strings.Repeat("a", 41): "a value with other characters"} {
+		if got := shown(in, 40); got != want {
+			t.Errorf("shown(%q) = %s, want %s", in, got, want)
+		}
+	}
+	if got := shown(strings.Repeat("a", 80), 80); got != `"`+strings.Repeat("a", 80)+`"` {
+		t.Errorf("an 80-character host: %s", got)
+	}
+}
+
+// Every rule that names a value the caller chose names it through shown: a host, the replay start, an
+// unknown field of a recorded response.
+func TestRulesNameValuesThroughShown(t *testing.T) {
+	for body, says := range map[string]string{
+		`{"hosts": ["x\u0007y \"secret\""]}`:           "network.hosts: a value with other characters is not",
+		`{"replay": {"start": "x\u0007y \"secret\""}}`: "network.replay.start: a value with other characters is not",
+		`{"replay": {"start": "2026-10-31T12:00:00Z", "exchanges": {"https://a.com/": [{"x\u0007y \"secret\"": 1}]}}}`: "unknown field a value with other characters",
+		`{"hosts": ["Upper.example"]}`: `network.hosts: "Upper.example" is not`,
+	} {
+		why := networkOf(t, body)
+		if !strings.Contains(why, says) || strings.Contains(why, "secret") || strings.ContainsRune(why, '\a') {
+			t.Errorf("%s: %q, want %q and no copied text", body, why, says)
+		}
+	}
+}

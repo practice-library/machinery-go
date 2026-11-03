@@ -26,13 +26,13 @@ const warningMax, notReadMax = 500, 300 // envelope.schema.json, in characters
 func checkStrings(warnings []string, notRead []NotRead) string {
 	for _, w := range warnings {
 		if n := utf8.RuneCountInString(w); n < 1 || n > warningMax {
-			return fmt.Sprintf("a warning is 1 to %d characters, not %q", warningMax, cut(w, 40))
+			return fmt.Sprintf("a warning is 1 to %d characters, not %d", warningMax, utf8.RuneCountInString(w))
 		}
 	}
 	for _, nr := range notRead {
 		for _, s := range []string{nr.What, nr.Why} {
 			if n := utf8.RuneCountInString(s); n < 1 || n > notReadMax {
-				return fmt.Sprintf("a notRead what and why are 1 to %d characters, not %q", notReadMax, cut(s, 40))
+				return fmt.Sprintf("a notRead what and why are 1 to %d characters, not %d", notReadMax, utf8.RuneCountInString(s))
 			}
 		}
 	}

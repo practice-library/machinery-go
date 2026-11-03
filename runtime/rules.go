@@ -62,7 +62,7 @@ func check(call string, req proto.Message) string {
 func network(net *pb.Network) string {
 	for _, host := range net.GetHosts() {
 		if !hostPattern.MatchString(host) {
-			return fmt.Sprintf("network.hosts: %q is not a lower-case host name", cut(host, 80))
+			return fmt.Sprintf("network.hosts: %s is not a lower-case host name", shown(host, 80))
 		}
 	}
 	replay := net.GetReplay()
@@ -73,7 +73,7 @@ func network(net *pb.Network) string {
 		return "network has both hosts and replay: replay goes with an empty hosts"
 	}
 	if !startUTC.MatchString(replay.GetStart()) {
-		return fmt.Sprintf("network.replay.start: %q is not a UTC time as 2026-10-31T12:00:00Z", cut(replay.GetStart(), 40))
+		return fmt.Sprintf("network.replay.start: %s is not a UTC time as 2026-10-31T12:00:00Z", shown(replay.GetStart(), 40))
 	}
 	exchanges := replay.GetExchanges()
 	for n, url := range slices.Sorted(maps.Keys(exchanges)) {
@@ -93,7 +93,7 @@ func recorded(v any) string {
 	}
 	for _, k := range slices.Sorted(maps.Keys(rec)) {
 		if !recordedKey[k] {
-			return fmt.Sprintf("unknown field %q", cut(k, 40))
+			return fmt.Sprintf("unknown field %s", shown(k, 40))
 		}
 	}
 	if e, ok := rec["error"]; ok {
@@ -132,7 +132,6 @@ func recorded(v any) string {
 	return ""
 }
 
-// cut is s's first n characters.
 // redact names a URL by its scheme and host only: never its userinfo, path, query or fragment, which can
 // hold credentials or tokens.
 func redact(raw string) string {
@@ -167,6 +166,20 @@ func kind(v any) string {
 	return "null"
 }
 
+// shown is how a diagnostic names a value it was given: in double quotes when it is wholly
+// [A-Za-z0-9_.:+-] and at most n characters, which then need no escaping and read the same in every
+// runtime; otherwise only as "a value with other characters", so no text the caller or plugin chose is
+// copied into an error.
+func shown(s string, n int) string {
+	if len(s) <= n && plainValue.MatchString(s) {
+		return `"` + s + `"`
+	}
+	return "a value with other characters"
+}
+
+var plainValue = regexp.MustCompile(`\A[A-Za-z0-9_.:+-]+\z`)
+
+// cut is s's first n characters.
 func cut(s string, n int) string {
 	if r := []rune(s); len(r) > n {
 		return string(r[:n])

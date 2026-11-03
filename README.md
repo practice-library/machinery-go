@@ -28,7 +28,7 @@ go run ./examples/minimal -stdio     # one call on stdin and stdout
 ## Checks
 
 `.github/workflows/checks.yml` runs `unit` and `build` on ubuntu-24.04 and ubuntu-24.04-arm:
-- **`unit`:** `go mod download` and `go mod verify`, `go vet`, `go test -race`, govulncheck, and `go run ./tests/guards`, which removes each guard in turn; the tests must then fail.
+- **`unit`:** `go mod download` and `go mod verify`, `go vet`, `go test -race`, govulncheck (pinned by `tools/go.sum`, a module of its own so its dependencies never reach the runtime's), and `go run ./tests/guards`, which removes each guard in turn; the tests must then fail.
 - **`build`:** two `CGO_ENABLED=0 -trimpath` builds of the example, with their sha256 values compared.
 
 Conformance against machinery's runtime fixtures is added when machinery's contract tag carries `conformance/runtime/`.

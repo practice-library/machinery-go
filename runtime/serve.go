@@ -240,12 +240,12 @@ func stdio(ctx context.Context, plugin any, in io.Reader, out io.Writer) connect
 		dec := json.NewDecoder(bytes.NewReader(line))
 		dec.DisallowUnknownFields()
 		dec.UseNumber()
-		if err = strictCheck(line); err == nil {
-			err = dec.Decode(&frame)
+		if err = strictCheck(line); err == nil && dec.Decode(&frame) != nil {
+			err = errFrame // encoding/json's own text can quote the frame
 		}
 	}
 	if err == nil && (frame.Path == nil || frame.TimeoutMs == nil || !timeoutMs.MatchString(frame.TimeoutMs.String())) {
-		err = errors.New(`it is {"path": <string>, "timeoutMs": <0 to 9999999999>}`)
+		err = errFrame
 	}
 	request, rerr := io.ReadAll(r)
 	switch {
@@ -323,3 +323,6 @@ func Main(plugin any) {
 		os.Exit(1)
 	}
 }
+
+// errFrame is the one reason a stdio frame line is refused that is not the pre-decode's own.
+var errFrame = errors.New(`it is {"path": <string>, "timeoutMs": <0 to 9999999999>}`)

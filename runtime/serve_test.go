@@ -297,23 +297,24 @@ func TestABodyThatDoesNotDecodeGetsAnErrorThatFitsAnyLegalOutputBytes(t *testing
 }
 
 func TestADecodingErrorIsFittedToExactlyTheSmallestLegalOutputBytes(t *testing.T) {
-	// a body whose whole decoding error is 1025 bytes: fitted to 1024 it must say less, whatever
-	// outputBytes the body names
-	for n := 1; n < 600; n++ {
-		body := []byte(`{"caps": {"timeSeconds": 60, "outputBytes": 4096}, "` + strings.Repeat("k", n) + `": 1}`)
-		err := decode(body, new(pb.DescribeRequest))
-		whole := failure(connect.CodeInvalidArgument, []string{"the body is not a valid DescribeRequest: " + err.Error()}, nil, 0)
-		if size(whole) != 1025 {
-			continue
+	// a decoding error says why in the runtime's own words and copies nothing the caller chose, so it fits
+	// the smallest outputBytes the contract allows with its detail, whatever the body names: a key or a
+	// value of any length, a key given twice, a number of any length, a body that is not JSON
+	long := strings.Repeat("k", 5000)
+	url := serve(t, &testPlugin{})
+	for _, body := range []string{
+		`{"caps": {"timeSeconds": 60, "outputBytes": 4096}, "` + long + `": 1}`,
+		`{"caps": {"timeSeconds": 60, "outputBytes": 4096}, "` + long + `": 1, "` + long + `": 1}`,
+		`{"caps": {"timeSeconds": 60, "outputBytes": 4096, "timeSeconds": 1` + strings.Repeat("0", 5000) + `}}`,
+		`{"caps": {"timeSeconds": "` + long + "\u0007" + `", "outputBytes": 4096}}`,
+		`{"caps": {"timeSeconds": 60, "outputBytes": 4096}} ` + long,
+	} {
+		r := post(t, url, "Describe", []byte(body))
+		_, f := failureOf(t, r, 400, "invalid_argument")
+		if len(r.body) > 1024 || strings.Contains(string(r.body), "kkkk") || f == nil || len(f.GetWarnings()) == 0 {
+			t.Errorf("%.60s: %d bytes, detail %v: %.200s", body, len(r.body), f, r.body)
 		}
-		r := post(t, serve(t, &testPlugin{}), "Describe", body)
-		failureOf(t, r, 400, "invalid_argument")
-		if len(r.body) > 1024 {
-			t.Errorf("%d bytes", len(r.body))
-		}
-		return
 	}
-	t.Fatal("no key length makes a 1025-byte error")
 }
 
 func TestANumberThatOverflowsToInfinityIsInvalidArgumentWithItsFailure(t *testing.T) {
@@ -635,5 +636,22 @@ func TestServeWithStdioReturnsTheCodeItAnswered(t *testing.T) {
 	err := Serve(&testPlugin{}, Options{Stdio: true, Stdin: strings.NewReader(frame("Merge", 1000) + `{` + capsJSON + `, "input": {}}`), Stdout: &out})
 	if connect.CodeOf(err) != connect.CodeUnimplemented {
 		t.Error(err)
+	}
+}
+
+// A frame line that does not decode is refused in the runtime's own words: encoding/json's text, which
+// can quote the frame (an unknown field's name, a value of the wrong type), is never copied.
+func TestStdioBadFrameCopiesNoFrameText(t *testing.T) {
+	describe := `{"caps": {"timeSeconds": 60, "outputBytes": 1048576}}`
+	for _, in := range []string{
+		`{"path": "` + svc + `Describe", "timeoutMs": 1000, "secret\u0007": 1}` + "\n" + describe,
+		`{"path": ["secret"], "timeoutMs": 1000}` + "\n" + describe,
+		`{"path": "` + svc + `Describe", "timeoutMs": "secret"}` + "\n" + describe,
+	} {
+		_, _, body := stdioCall(t, &testPlugin{}, in)
+		_, f := failureOf(t, reply{400, "", body}, 400, "invalid_argument")
+		if strings.Contains(string(body), "secret") || f == nil || f.GetWarnings()[0] != `the frame's first line is not valid: it is {"path": <string>, "timeoutMs": <0 to 9999999999>}` {
+			t.Errorf("%q: %s", in, body)
+		}
 	}
 }
