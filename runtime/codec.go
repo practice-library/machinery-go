@@ -13,7 +13,7 @@ package runtime
 // integral value as an integer: 3, never 3.0, and 1e20 as 100000000000000000000 (plugin.proto's header).
 // Non-integral numbers are written as Python's repr writes them, so both runtimes write the same bytes for
 // every number (machinery-python's matching change for integral values above 2^53 is on its branch
-// integral-form-any-size; its main still writes 9007199254740994.0 for 2^53 + 2).
+// integral-form-any-size, merged to its main as PR #19).
 
 import (
 	"bytes"
@@ -69,7 +69,7 @@ func strictValue(dec *json.Decoder) error {
 				key, _ := dec.Token() // a string: the decoder refuses anything else as a key
 				k, _ := key.(string)
 				if seen[k] {
-					return fmt.Errorf("the key %q is given twice", k)
+					return fmt.Errorf("the key %s is given twice", shown(k, 40))
 				}
 				seen[k] = true
 			}
@@ -81,7 +81,7 @@ func strictValue(dec *json.Decoder) error {
 		return err
 	case json.Number:
 		if _, err := strconv.ParseFloat(string(t), 64); err != nil {
-			return fmt.Errorf("the number %.40s is not a finite double", t)
+			return fmt.Errorf("the number %s is not a finite double", shown(string(t), 40))
 		}
 	}
 	return nil
@@ -125,8 +125,13 @@ func decode(body []byte, msg proto.Message) error {
 	if err := strictCheck(body); err != nil {
 		return err
 	}
-	return protojson.UnmarshalOptions{DiscardUnknown: false}.Unmarshal(body, msg)
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(body, msg); err != nil {
+		return errMessageFields // protojson's own text can quote the body; the runtime says it in its words
+	}
+	return nil
 }
+
+var errMessageFields = errors.New("it does not match the message's fields")
 
 // fromValue is v as a plain Go value, every integral number up to 2^53 an int64.
 func fromValue(v *structpb.Value) any {

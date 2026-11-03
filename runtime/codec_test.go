@@ -147,3 +147,22 @@ func TestPlainRefusesNumbersJSONCannotCarry(t *testing.T) {
 		}
 	}
 }
+
+// The pre-decode and the message decode give the runtime's own sentences: a duplicated key or an
+// overflowing number is shown only through shown, and anything protojson refuses is one fixed sentence,
+// never protojson's text, which can quote the body.
+func TestDecodeErrorsCopyNoBody(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"caps": {"timeSeconds": 1, "timeSeconds": 2}}`:               `the key "timeSeconds" is given twice`,
+		`{"caps": {"x\u0007 \"secret\"": 1, "x\u0007 \"secret\"": 2}}`: "the key a value with other characters is given twice",
+		`{"caps": {"timeSeconds": 1e400}}`:                             `the number "1e400" is not a finite double`,
+		`{"caps": {"timeSeconds": "secret\u0007"}}`:                    "it does not match the message's fields",
+		`{"secret\u0007": 1}`:                                          "it does not match the message's fields",
+		`{"caps": {"timeSeconds": [1, "secret"]}}`:                     "it does not match the message's fields",
+	} {
+		err := decode([]byte(body), new(pb.DescribeRequest))
+		if err == nil || err.Error() != want {
+			t.Errorf("%s: %v, want %q", body, err, want)
+		}
+	}
+}
